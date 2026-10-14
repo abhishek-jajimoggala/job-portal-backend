@@ -1292,29 +1292,52 @@ def all_applications():
 
 
 
+
 @app.route("/api/admin/rejected-candidates", methods=["GET"])
 def get_rejected_candidates():
     cursor = None
     try:
+        # ADMIN LOGIN CHECK
         if not session.get("admin_logged_in"):
-            return jsonify({"status": "failed","message": "Please Login As Admin"}), 401
+            return jsonify({"status": "failed","message": "Please Login As Admin"
+            }), 401
+
+        # DATABASE CONNECTION
         mydb.ping(reconnect=True)
         cursor = mydb.cursor(dictionary=True)
+        # FETCH REJECTED CANDIDATES WITH JOB DETAILS
         cursor.execute("""
-            SELECT a.id, a.status, a.applied_date,
-                u.id AS user_id,u.username,u.email,u.phone,u.state,
-                u.skills,u.tenth,u.intermediate,u.degree,u.college,u.branch,
-                u.profile_image,u.resume_path
-            FROM applications a JOIN users u ON a.user_id = u.id
+            SELECT a.id AS application_id,a.status,a.applied_date,a.job_id,
+                u.id AS user_id,u.username,u.email,u.phone,u.state,u.skills,
+                u.tenth,u.intermediate,u.degree,u.college,u.branch,u.profile_image,
+                u.resume_path,
+                j.job_title,
+                j.company_name
+            FROM applications a
+            JOIN users u
+                ON a.user_id = u.id
+            JOIN jobs j
+                ON a.job_id = j.id
             WHERE a.status = 'Rejected'
             ORDER BY a.applied_date DESC """)
+
         candidates = cursor.fetchall()
-        return jsonify({"status": "success","candidates": candidates}), 200
+
+        return jsonify({ "status": "success", "candidates": candidates
+        }), 200
+
     except Exception as e:
-        return jsonify({"status": "failed","message": str(e)}), 500
+        print("REJECTED CANDIDATES ERROR:", str(e))
+
+        return jsonify({
+            "status": "failed",
+            "message": str(e)
+        }), 500
+
     finally:
         if cursor:
             cursor.close()
+
 
 @app.route('/api/update-application-status/<int:application_id>', methods=['PUT'])
 def update_application_status(application_id):
@@ -1664,11 +1687,8 @@ def add_job():
     try:
         data = request.get_json()
         cursor = mydb.cursor()
-        cursor.execute("""
-            INSERT INTO jobs
-            (job_title,company_name,location,salary,experience,job_type,
-                skills,description
-            )
+        cursor.execute(""" INSERT INTO jobs
+            (job_title,company_name,location,salary,experience,job_type,skills,description)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             data["job_title"],data["company_name"],data["location"],
@@ -1683,32 +1703,45 @@ def add_job():
         return jsonify({"status": "failed","message": str(e)
         }), 500
 
+
 @app.route("/api/admin/shortlisted-candidates", methods=["GET"])
 def get_shortlisted_candidates():
     cursor = None
     try:
+        # ADMIN LOGIN CHECK
         if not session.get("admin_logged_in"):
-            return jsonify({ "status": "failed", "message": "Please Login As Admin"}), 401
+            return jsonify({"status": "failed","message": "Please Login As Admin"
+            }), 401
+
+        # DATABASE CONNECTION
         mydb.ping(reconnect=True)
         cursor = mydb.cursor(dictionary=True)
-        cursor.execute(""" SELECT
-                a.id,a.status,a.applied_date,a.job_id,u.id AS user_id,
-                u.username,u.email,u.phone,u.state,
-                u.skills,u.tenth,u.intermediate,
-                u.degree,u.college,u.branch,u.profile_image,u.resume_path
-            FROM applications a JOIN users u ON a.user_id = u.id
-            WHERE a.status='Shortlisted'ORDER BY a.applied_date DESC """)
+
+        # GET SHORTLISTED CANDIDATES WITH JOB DETAILS
+        cursor.execute("""
+            SELECT a.id AS application_id,a.status,a.applied_date,a.job_id,
+                u.id AS user_id,u.username,u.email,u.phone,u.state,u.skills,
+                u.tenth,u.intermediate,u.degree,u.college,u.branch,
+                u.profile_image,u.resume_path,j.job_title,j.company_name
+            FROM applications a
+            JOIN users u
+                ON a.user_id = u.id
+            JOIN jobs j
+                ON a.job_id = j.id
+            WHERE a.status = 'Shortlisted'
+            ORDER BY a.applied_date DESC""")
+
         candidates = cursor.fetchall()
-        return jsonify({"status": "success","candidates": candidates
-        }), 200
 
+        return jsonify({"status": "success","candidates": candidates}), 200
     except Exception as e:
-        return jsonify({"status": "failed","message": str(e)
+        print("SHORTLISTED CANDIDATES ERROR:", str(e))
+        return jsonify({"status": "failed","message": "Failed to fetch shortlisted candidates"
         }), 500
-
     finally:
         if cursor:
             cursor.close()
+
 
 @app.route("/api/admin/users", methods=["GET"])
 def get_all_users():
@@ -1726,8 +1759,7 @@ def get_all_users():
         cursor.execute("""
             SELECT id, username, email,phone,state,skills,tenth,intermediate,
                 degree,college,branch,profile_image,resume_path
-            FROM users ORDER BY id DESC
-        """)
+            FROM users ORDER BY id DESC """)
 
         users = cursor.fetchall()
         return jsonify({"status": "success","users": users
@@ -1741,8 +1773,6 @@ def get_all_users():
 
         if cursor:
             cursor.close()
-
-
 
 @app.route('/api/search-jobs', methods=['GET'])
 def search_jobs():
